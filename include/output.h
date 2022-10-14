@@ -3,12 +3,109 @@
 #include <string>
 #include <fstream>
 #include <algorithm>
-#include <span>
 
-#include "vector.h"
-#include "vertex.h"
-#include "fragment.h"
-#include "texture.h"
+
+struct Vec2 {
+
+    union {
+        // Accessing these randomly can be UB, I'm not sure
+        // GLM does the same
+        std::array<float, 2> data;
+        struct {
+            float x, y;
+        };
+    };
+
+    const float& operator[](int pos) const {
+        return data[pos];
+    }
+
+    float& operator[](int pos) {
+        return data[pos];
+    }
+
+    friend Vec2 operator*(const Vec2& v, float f) {
+        return Vec2{ v.x * f, v.y * f };
+    }
+
+    friend Vec2 operator*(float f, const Vec2& v) {
+        return Vec2{ v.x * f, v.y * f };
+    }
+
+    friend Vec2 operator+(const Vec2& a, const Vec2& b) {
+        return Vec2{ a.x + b.x, a.y + b.y };
+    }
+};
+
+struct Vec3 {
+    union {
+        std::array<float, 3> data;
+        struct {
+            float x, y, z;
+        };
+        struct {
+            float r, g, b;
+        };
+    };
+    
+    Vec3(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {};
+    Vec3(const Vec2& v, float z_) : x(v.x), y(v.y), z(z_) {};
+
+    const float& operator[](int pos) const {
+        return data[pos];
+    }
+
+    float& operator[](int pos) {
+        return data[pos];
+    }
+
+    friend Vec3 operator*(const Vec3& v, float f) {
+        return Vec3{ v.x * f, v.y * f, v.z * f };
+    }
+
+    friend Vec3 operator*(float f, const Vec3& v) {
+        return Vec3{ v.x * f, v.y * f, v.z * f };
+    }
+
+    friend Vec3 operator+(const Vec3& a, const Vec3& b) {
+        return Vec3{ a.x + b.x, a.y + b.y, a.z + b.z };
+    }
+};
+
+struct Vec4 {
+    union {
+        std::array<float, 4> data;
+        struct {
+            float x, y, z, w;
+        };
+        struct {
+            float r, g, b, a;
+        };
+    };
+
+    Vec4(float x_, float y_, float z_, float w_) : x(x_), y(y_), z(z_), w(w_) {};
+    Vec4(Vec3 v, float w_) : x(v.x), y(v.y), z(v.z), w(w_) {}
+
+    const float& operator[](int pos) const {
+        return data[pos];
+    }
+
+    float& operator[](int pos) {
+        return data[pos];
+    }
+
+    friend Vec4 operator*(const Vec4& v, float f) {
+        return Vec4{ v.x * f, v.y * f, v.z * f, v.w * f };
+    }
+
+    friend Vec4 operator*(float f, const Vec4& v) {
+        return Vec4{ v.x * f, v.y * f, v.z * f, v.w * f };
+    }
+
+    friend Vec4 operator+(const Vec4& a, const Vec4& b) {
+        return Vec4{ a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w };
+    }
+};
 
 struct Framebuffer {
 
@@ -62,16 +159,140 @@ void WriteImg(const std::string& filename, const Framebuffer& framebuffer) {
     }
 }
 
-template <typename V, typename F>
-void DrawTriangles(Framebuffer& framebuffer, std::span<Vertex> vertices, V vShader, F fShader) {
+struct Vertex {
+
+    Vec3 pos;	// This should be a Vec4
+    Vec4 color;
+    Vec2 tex;
+
+};
+
+struct Fragment {
+
+    Vec3 pos;
+    Vec4 color;
+    Vec2 tex;
+
+};
+
+struct Texture {
+
+    const int w;
+    const int h;
+    std::vector<Vec3> colors;
+
+    Texture(int w_, int h_) : w(w_), h(h_), colors(w* h) {};
+
+private:
+    const Vec3& getColor(int x, int y) const {
+        // Repeat the border indefinitely
+
+        if (x < 0) {
+            x = 0;
+        }
+        else if (x >= w) {
+            x = w - 1;
+        }
+        if (y < 0) {
+            y = 0;
+        }
+        else if (y >= h) {
+            y = h - 1;
+        }
+
+        return colors[y * w + x];
+    }
+
+public:
+    Vec3 sample(float x, float y) {
+
+        // Convert coords from range [0, 1] to [0, w] and [0, h]
+        x *= w;
+        y *= h;
+
+        x -= 0.5f;
+        y -= 0.5f;
+ 
+        const int xMin = static_cast<int>(x);
+        const int xMax = xMin + 1;
+        const int yMin = static_cast<int>(y);
+        const int yMax = yMin + 1;
+
+        const float xA = x - xMin;
+        const float yA = y - yMin;
+
+        return
+            getColor(xMin, yMin) * (1.f - xA) * (1.f - yA) +
+            getColor(xMin, yMax) * (1.f - xA) * yA +
+            getColor(xMax, yMax) * xA * yA +
+            getColor(xMax, yMin) * xA * (1.f - yA);
+    }
+
+};
+
+// Read a texture from a ppm image
+Texture ReadTexture(const std::string& filename, float gamma = 2.2f) {
+
+    std::ifstream is(filename, std::ios::binary);    
+    std::string buf;
+    is >> buf;
+    if (buf != "P6") {
+        throw std::runtime_error("ReadTexture: wrong magic number");
+    }
+    int w, h, maxV;
+    is >> w;
+    is >> h;
+    is >> maxV;
+    is.get();
+
+    Texture tex(w, h);
+
+    const uint8_t dataSize = maxV < 256 ? 1 : 2;
+    std::vector<char> data(w * h * 3 * dataSize);
+    is.read(data.data(), data.size());
+
+    for (int y = h - 1; y >= 0; --y) {
+        for (int x = 0; x < w; ++x) {
+            for (int c = 0; c < 3; ++c) {
+
+                uint16_t cVal = data[(y * w + x) * dataSize * 3 + dataSize * c];
+                if (dataSize == 2) {
+                    const uint16_t leastSig = data[(y * w + x) * dataSize * 3 + dataSize * c + 1];
+                    cVal = cVal * 256 + leastSig;
+                }
+                tex.colors[y * w + x][c] = powf(static_cast<float>(cVal) / maxV, gamma);
+            }
+        }
+    }
+
+    return tex;
+}
+
+Vertex VertexShader(const Vertex& vertex) {
+    return vertex;
+}
+
+Fragment FragmentShader(const Fragment& fragment) {
+    constexpr float gamma = 2.2f;
+    //constexpr float gamma = 1.f;
+    const Vec4 color = {
+        powf(fragment.color.r, 1.f / gamma),
+        powf(fragment.color.g, 1.f / gamma),
+        powf(fragment.color.b, 1.f / gamma),
+        fragment.color.a
+    };
+    return { fragment.pos, color, fragment.tex };
+}
+
+void DrawTriangles(Framebuffer& framebuffer, const std::vector<Vertex>& vertices) {
 
     std::vector<Fragment> fragments;
 
     for (int i = 0; i < vertices.size() / 3; ++i) {
 
-        Vertex a = vShader(vertices[i * 3]);
-        Vertex b = vShader(vertices[i * 3 + 1]);
-        Vertex c = vShader(vertices[i * 3 + 2]);
+        Vertex a = VertexShader(vertices[i * 3]);
+        Vertex b = VertexShader(vertices[i * 3 + 1]);
+        Vertex c = VertexShader(vertices[i * 3 + 2]);
 
         // TODO Clipping
 
@@ -173,7 +394,7 @@ void DrawTriangles(Framebuffer& framebuffer, std::span<Vertex> vertices, V vShad
     // Now draw fragments
     for (int i = 0; i < fragments.size(); ++i) {
 
-        Fragment frag = fShader(fragments[i]);
+        Fragment frag = FragmentShader(fragments[i]);
 
         const int x = static_cast<int>(frag.pos.x);
         const int y = static_cast<int>(frag.pos.y);
@@ -194,33 +415,31 @@ void DrawTriangles(Framebuffer& framebuffer, std::span<Vertex> vertices, V vShad
 
 int main(void) {
 
-    constexpr int scale = 1;
+    Vec2 d = {2, 3};
+
+    constexpr int scale = 2;
     constexpr int w = 1920 / scale;
     constexpr int h = 1080 / scale;
 
     Framebuffer framebuffer(w, h);
 
-    Texture tex = ReadTexture("container.ppm");
-
     std::vector<Vertex> vertices{
         { {-1.0f, -1.0f, 0.f}, { 1.f, 0.f, 0.f, 1.f }, {0.0f, 1.0f} },
         { {-1.0f, +1.0f, 0.f }, { 1.f, 0.f, 0.f, 1.f }, {1.0f, 0.0f} },
         { { 1.0f, 0.f, 0.f }, { 1.f, 1.f, 0.f, 0.8f }, {1.0f, 1.0f} },
-        
+
+        { {-0.5f, -0.5f, -0.1f}, { 0.f, 1.f, 0.f, 0.5f }, {1.0f, 0.0f} },
+        { {0.5f, -0.5f, 0.4f }, { 0.f, 1.f, 0.f, 0.5f }, {1.0f, 1.0f} },
+        { { 0.0f, 0.5f, -0.5f }, { 0.f, 1.f, 0.f, 0.5f }, {0.0f, 1.0f} },
+
         { {0.8f, 0.3f, -0.1f}, { 0.f, 0.f, 1.f, 0.5f }, {1.0f, 0.5f} },
         { {0.5f, -0.5f, 0.2f }, { 0.f, 1.f, 0.f, 0.5f }, {0.0f, 0.0f} },
-        { { 0.0f, 0.5f, -0.5f }, { 0.f, 1.f, 1.f, 0.5f }, {1.0f, 0.7f} },
-
-        { {-0.5f, -0.5f, -0.1f}, { 0.f, 1.f, 0.f, 1.0f }, {0.f, 0.f} },
-        { {0.5f, -0.5f, 0.4f }, { 0.f, 1.f, 0.f, 0.7f }, {1.f, 0.f} },
-        { { 0.0f, 0.5f, -0.5f }, { 0.f, 1.f, 0.f, 0.5f }, {0.5f, 1.f} }
-
+        { { 0.0f, 0.5f, -0.5f }, { 0.f, 1.f, 1.f, 0.5f }, {1.0f, 0.7f} }
     };
 
     framebuffer.clear({ 0.1f,0.1f,0.2f,1.f });
-    DrawTriangles(framebuffer, { vertices.begin(), 6 }, BasicVertShader(), BasicFragShader());
-    DrawTriangles(framebuffer, { vertices.begin() + 6, 3 }, BasicVertShader(), TextureFragShader(tex));
+    DrawTriangles(framebuffer, vertices);
 
-    WriteImg("img2.ppm", framebuffer);
+    WriteImg("img.ppm", framebuffer);
 
 }
