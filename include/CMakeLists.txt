@@ -3,5 +3,5 @@ TARGET_SOURCES(rasterizer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/fragment.h
     ${CMAKE_CURRENT_SOURCE_DIR}/texture.h
     ${CMAKE_CURRENT_SOURCE_DIR}/output.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/vector.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/vec.h
 )

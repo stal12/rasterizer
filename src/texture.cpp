@@ -7,6 +7,9 @@
 Texture ReadTexture(const std::string& filename, float gamma) {
 
     std::ifstream is(filename, std::ios::binary);
+    if (!is.is_open()) {
+        throw std::runtime_error("ReadTexture: can't open file");
+    }
     std::string buf;
     is >> buf;
     if (buf != "P6") {

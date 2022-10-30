@@ -3,7 +3,7 @@
 #include <vector>
 #include <string>
 
-#include "vector.h"
+#include "vec.h"
 
 struct Texture {
 

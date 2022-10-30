@@ -1,56 +1,52 @@
 #pragma once
 
-#include "vector.h"
+#include "vec.h"
 #include "texture.h"
+#include "vertex.h"
 
+template <typename... Attr>
 struct Fragment {
 
     Vec3 pos;
-    Vec4 color;
-    Vec2 tex;
+    std::tuple<Attr...> attr;
+
+    Fragment(Vec3 pos_, Attr... attr_) : pos(std::move(pos_)), attr(std::move(attr_)...) {}
+    Fragment(const Vertex<Attr...>& ver) : pos(ver.pos.x, ver.pos.y, ver.pos.z), attr(ver.attr) {}
 
 };
 
-extern Fragment FragmentShader(const Fragment& fragment);
+template <typename... Attr>
+auto make_fragment(Vec3 pos, Attr... attr) {
+    return Fragment(pos, attr);
+}
 
 struct BasicFragShader {
 
-    const float gamma = 2.2f;
-
-    BasicFragShader() = default;
-    BasicFragShader(float gamma_) : gamma(gamma_) {}
-
-    Fragment operator()(const Fragment& fragment) {
-        const Vec4 color = {
-            powf(fragment.color.r, 1.f / gamma),
-            powf(fragment.color.g, 1.f / gamma),
-            powf(fragment.color.b, 1.f / gamma),
-            fragment.color.a
-        };
-        return { fragment.pos, color, fragment.tex };
+    Vec4 operator() (Vec3 pos, Vec4 color, Vec2 tex) {
+        return color;
     }
 
 };
 
 struct TextureFragShader {
 
-    Texture tex;
+    Texture texture;
     const float gamma = 2.2f;
 
-    TextureFragShader(const Texture& t) : tex(t) {}
-    TextureFragShader(const Texture& t, float gamma_) : tex(t), gamma(gamma_) {}
+    TextureFragShader(const Texture& t) : texture(t) {}
+    TextureFragShader(const Texture& t, float gamma_) : texture(t), gamma(gamma_) {}
 
-    Fragment operator()(const Fragment& fragment) {
+    Vec4 operator()(Vec3 pos, Vec4 color, Vec2 tex) {
         
-        const Vec3 texColor = tex.sample(fragment.tex.x, fragment.tex.y);
+        const Vec3 texColor = texture.sample(tex.x, tex.y);
         
-        const Vec4 color = {
+        const Vec4 outColor = {
             powf(texColor.r, 1.f / gamma),
             powf(texColor.g, 1.f / gamma),
             powf(texColor.b, 1.f / gamma),
-            fragment.color.a
+            color.a
         };
-        return { fragment.pos, color, fragment.tex };
+        return outColor;
     }
 
 };
