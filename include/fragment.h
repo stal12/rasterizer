@@ -36,7 +36,7 @@ struct TextureFragShader {
     TextureFragShader(const Texture& t) : texture(t) {}
     TextureFragShader(const Texture& t, float gamma_) : texture(t), gamma(gamma_) {}
 
-    Vec4 operator()(Vec3 pos, Vec4 color, Vec2 tex) {
+    Vec4 operator()(Vec3 pos, Vec2 tex) {
         
         const Vec3 texColor = texture.sample(tex.x, tex.y);
         
@@ -44,7 +44,7 @@ struct TextureFragShader {
             powf(texColor.r, 1.f / gamma),
             powf(texColor.g, 1.f / gamma),
             powf(texColor.b, 1.f / gamma),
-            color.a
+            1.f
         };
         return outColor;
     }

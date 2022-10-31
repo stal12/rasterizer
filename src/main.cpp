@@ -1,3 +1,6 @@
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 #include <vector>
 #include <array>
 #include <string>
@@ -20,7 +23,7 @@
 
 template <size_t Start, typename... Vals>
 constexpr void _tuple_interpolate(std::tuple<Vals...>& res,
-	const std::tuple<Vals...>& a, const std::tuple<Vals...>& b, const std::tuple<Vals...>& c, 
+	const std::tuple<Vals...>& a, const std::tuple<Vals...>& b, const std::tuple<Vals...>& c,
 	float wa, float wb, float wc) {
 	if constexpr (Start < std::tuple_size_v<std::remove_reference_t<decltype(res)>>) {
 		std::get<Start>(res) = std::get<Start>(a) * wa + std::get<Start>(b) * wb + std::get<Start>(c) * wc;
@@ -95,15 +98,18 @@ void DrawTriangles(Framebuffer& framebuffer, std::span<VertAttr> vertices, Vert 
 
 	std::vector<decltype(Fragment(std::apply(vShader, vertices[0])))> fragments;
 
-	// std::apply(vShader, vertices[0]);
-
 	for (int i = 0; i < vertices.size() / 3; ++i) {
 
-		const auto a = std::apply(vShader, vertices[i * 3]);		// it works with const Vertex a, but how?
-		const auto b = std::apply(vShader, vertices[i * 3 + 1]);
-		const auto c = std::apply(vShader, vertices[i * 3 + 2]);
+		Vertex a = std::apply(vShader, vertices[i * 3]);		// it works with const Vertex a, but how?
+		auto b = std::apply(vShader, vertices[i * 3 + 1]);
+		auto c = std::apply(vShader, vertices[i * 3 + 2]);
 
 		// TODO Clipping
+
+		// TODO Divide by w
+		a.pos = a.pos * (1.f / a.pos.w);
+		b.pos = b.pos * (1.f / b.pos.w);
+		c.pos = c.pos * (1.f / c.pos.w);
 
 		// Find fragments
 
@@ -115,77 +121,25 @@ void DrawTriangles(Framebuffer& framebuffer, std::span<VertAttr> vertices, Vert 
 		const Vec2 bPos{ (b.pos.x - -1.f) / 2.f * w, (b.pos.y - -1.f) / 2.f * h };
 		const Vec2 cPos{ (c.pos.x - -1.f) / 2.f * w, (c.pos.y - -1.f) / 2.f * h };
 
-		// Find the upper, leftmost, and rightmost vertices
-		Vec2 high, left, right;
-		if (aPos.y >= bPos.y && aPos.y >= cPos.y) {
-			high = aPos;
-			left = bPos;
-			right = cPos;
-		}
-		else if (bPos.y >= aPos.y && bPos.y >= cPos.y) {
-			high = bPos;
-			left = aPos;
-			right = cPos;
-		}
-		else {
-			high = cPos;
-			left = bPos;
-			right = aPos;
-		}
-		if (left.x > right.x) {
-			std::swap(left, right);
-		}
-
-		// Consider the left and right lines coming down from the upper vertex / \ 
-		// m and q are parameters of the equation x = my + q
-		float mLeft = (high.x - left.x) / (high.y - left.y);	// TODO What happens if the line is horizontal?
-		float qLeft = -left.y * mLeft + left.x;
-
-		float mRight = (high.x - right.x) / (high.y - right.y);
-		float qRight = -right.y * mRight + right.x;
-
-		float mBottom = (right.x - left.x) / (right.y - left.y);
-		float qBottom = -left.y * mBottom + left.x;
+		// Bounding box
+		const float top = std::max({ aPos.y, bPos.y, cPos.y });
+		const float bottom = std::min({ aPos.y, bPos.y, cPos.y });
+		const float left = std::min({aPos.x, bPos.x, cPos.x	});
+		const float right = std::max({ aPos.x, bPos.x, cPos.x });
 
 		// Examine the internal of the triangle line by line
 		const float den = (bPos.y - cPos.y) * (aPos.x - cPos.x) + (cPos.x - bPos.x) * (aPos.y - cPos.y);
-		bool changedLine = false;
-		for (int r = static_cast<int>(high.y + 0.5f); ; --r) {
-
-			// Find leftmost and rightmost pixels in this line
-			const float y = r + 0.5f;
-			if (y < high.y) {
-
-				if (y < left.y) {
-					if (!changedLine) {
-						// Change the line / with the line _
-						mLeft = mBottom;
-						qLeft = qBottom;
-						changedLine = true;
-						left = right;	// From this point they are treated as one
-					}
-					else {
-						break;
-					}
-				}
-				if (y < right.y) {
-					// Change the line \ with the line _
-					mRight = mBottom;
-					qRight = qBottom;
-					changedLine = true;
-					right = left;
-				}
-
-				const float xLeft = mLeft * y + qLeft;
-				const float xRight = mRight * y + qRight;
-
-				// Take all pixels with center between these two extremes
-				for (float x = ceilf(xLeft - 0.5f) + 0.5f; x < xRight; ++x) {
+		
+		for (float y = bottom - 0.5f; y < top + 0.5f; ++y) {
+			for (float x = left - 0.5f; x < right + 0.5f; ++x) {
+		
+				const float wa = ((bPos.y - cPos.y) * (x - cPos.x) + (cPos.x - bPos.x) * (y - cPos.y)) / den;
+				const float wb = ((cPos.y - aPos.y) * (x - cPos.x) + (aPos.x - cPos.x) * (y - cPos.y)) / den;
+				const float wc = 1.f - wa - wb;
+				constexpr float tol = 0.00001f;
+				if (wa >= -tol && wb >= -tol && wc >= -tol && wa <= 1+tol && wb <= 1+tol && wc <= 1+tol) {
 					// New fragment
-					// Interpolate the values of the vertices
-					const float wa = ((bPos.y - cPos.y) * (x - cPos.x) + (cPos.x - bPos.x) * (y - cPos.y)) / den;
-					const float wb = ((cPos.y - aPos.y) * (x - cPos.x) + (aPos.x - cPos.x) * (y - cPos.y)) / den;
-					const float wc = 1.f - wa - wb;
+					
 					const float z = (wa * a.pos.z + wb * b.pos.z + wc * c.pos.z) / 2.f + 0.5f;
 					const Vec3 fragPos{ x, y, z };
 
@@ -196,32 +150,32 @@ void DrawTriangles(Framebuffer& framebuffer, std::span<VertAttr> vertices, Vert 
 						}, fragAttr);
 
 					fragments.push_back(fragment);
-				}
+				}			
 			}
 		}
 	}
 
 	// Now draw fragments
 	for (int i = 0; i < fragments.size(); ++i) {
-	
+
 		const auto& frag = fragments[i];
-			
+
 		Vec4 color = std::apply([&frag, &fShader](auto&&... attrs) {
 			return fShader(frag.pos, attrs...);
 			}, frag.attr);
-	 	
+
 		const int x = static_cast<int>(frag.pos.x);
 		const int y = static_cast<int>(frag.pos.y);
-	
+
 		// Z-test
 		const float depth = framebuffer.getDepth(x, y);
 		if (frag.pos.z < depth) {
 			framebuffer.setDepth(x, y, frag.pos.z);
-	
+
 			// Alpha blending
 			const Vec4& src = framebuffer.getColor(x, y);
 			const Vec4 res = src * (1 - color.a) + color * color.a;
-	
+
 			framebuffer.setColor(x, y, res);
 		}
 	}
@@ -237,11 +191,11 @@ int main(void) {
 
 	Texture texture = ReadTexture("../data/greywall.ppm");
 
-	std::vector<std::tuple<Vec3, Vec4, Vec2>> vertices{
+	/*std::vector<std::tuple<Vec3, Vec4, Vec2>> vertices{
 		{{-1.0f, -1.0f, 0.f}, {1.f, 0.f, 0.f, 1.f}, {0.0f, 1.0f }},
 		{{-1.0f, +1.0f, 0.f}, {1.f, 0.f, 0.f, 1.f}, {1.0f, 0.0f}},
 		{{ 1.0f, 0.f, 0.f}, {1.f, 1.f, 0.f, 0.8f}, {1.0f, 1.0f}},
-	
+
 		{ {0.8f, 0.3f, -0.1f}, {0.f, 0.f, 1.f, 0.5f}, {1.0f, 0.5f} },
 	   { {0.5f, -0.5f, 0.2f }, { 0.f, 1.f, 0.f, 0.5f }, {0.0f, 0.0f} },
 	   { { 0.0f, 0.5f, -0.5f }, { 0.f, 1.f, 1.f, 0.5f }, {1.0f, 0.7f} },
@@ -250,12 +204,64 @@ int main(void) {
 	   { {0.5f, -0.5f, 0.4f }, { 0.f, 1.f, 0.f, 0.7f }, {1.f, 0.f} },
 	   { { 0.0f, 0.5f, -0.5f }, { 0.f, 1.f, 0.f, 0.5f }, {0.5f, 1.f} }
 
-   };
+   };*/
+
+	std::vector<std::tuple<Vec3, Vec2>> vertices{
+		// back face
+		{{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+		{{ 0.5f, -0.5f, -0.5f}, {1.0f, 0.0f}},
+		{{ 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f}},
+		{{ 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f}},
+		{{-0.5f,  0.5f, -0.5f}, {0.0f, 1.0f}},
+		{{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+		// front face
+		{{-0.5f, -0.5f,  0.5f}, {0.0f, 0.0f}},
+		{{ 0.5f, -0.5f,  0.5f}, {1.0f, 0.0f}},
+		{{ 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+		{{ 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+		{{-0.5f,  0.5f,  0.5f}, {0.0f, 1.0f}},
+		{{-0.5f, -0.5f,  0.5f}, {0.0f, 0.0f}},
+		// left face
+		{{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+		{{-0.5f,  0.5f, -0.5f}, {1.0f, 0.0f}},
+		{{-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+		{{-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+		{{-0.5f, -0.5f,  0.5f}, {0.0f, 1.0f}},
+		{{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+		// right face
+		 {{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+		 {{0.5f,  0.5f, -0.5f}, {1.0f, 0.0f}},
+		 {{0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+		 {{0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+		 {{0.5f, -0.5f,  0.5f}, {0.0f, 1.0f}},
+		 {{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+		// bottom face      
+		{{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+		{{ 0.5f, -0.5f, -0.5f}, {1.0f, 0.0f}},
+		{{ 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f}},
+		{{ 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f}},
+		{{-0.5f, -0.5f,  0.5f}, {0.0f, 1.0f}},
+		{{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f}},
+		// top face
+		{{-0.5f,  0.5f, -0.5f}, {0.0f, 0.0f}},
+		{{ 0.5f,  0.5f, -0.5f}, {1.0f, 0.0f}},
+		{{ 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+		{{ 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f}},
+		{{-0.5f,  0.5f,  0.5f}, {0.0f, 1.0f}},
+		{{-0.5f,  0.5f, -0.5f}, {0.0f, 0.0f}}
+	};
 
 	framebuffer.clear({ 0.1f,0.1f,0.2f,1.f });
-	DrawTriangles(framebuffer, std::span{ vertices.begin(), 3 }, BasicVertShader(), BasicFragShader());
-	DrawTriangles(framebuffer, std::span{ vertices.begin() + 3, 3 }, BasicVertShader(), BasicFragShader());
-	DrawTriangles(framebuffer, std::span{ vertices.begin() + 6, 3 }, BasicVertShader(), TextureFragShader(texture));
+	CubeVertShader cube_vert;
+	cube_vert.model =
+		translation({ 0.f, 0.f, -2.5f }) *
+		rotation(0.8f * (float)M_PI / 4.f, normalize(Vec3{1.f, 1.f, 1.f}))*
+		scaling(Vec3{ 1.f, 1.f, 1.f } * 1.0f);
+	cube_vert.view = lookAt(Vec3{ 0.f, 0.f, 0.f }, Vec3{ 0.3f, 0.f, -1.f }, Vec3{ 0.f, 1.f, 0.f });
+	cube_vert.projection = projection((float)M_PI / 4.f, (float)w / h, 0.1f, 10.f);
+	DrawTriangles(framebuffer, std::span{ vertices.begin(), 36}, cube_vert, TextureFragShader(texture));
+	//DrawTriangles(framebuffer, std::span{ vertices.begin() + 3, 3 }, BasicVertShader(), BasicFragShader());
+	//DrawTriangles(framebuffer, std::span{ vertices.begin() + 6, 3 }, BasicVertShader(), TextureFragShader(texture));
 
 	WriteImg("img.ppm", framebuffer);
 

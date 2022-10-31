@@ -5,4 +5,5 @@ TARGET_SOURCES(rasterizer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/texture.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/output.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/vec.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/mat.cpp
 )
