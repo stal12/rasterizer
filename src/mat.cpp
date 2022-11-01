@@ -81,8 +81,8 @@ Mat4 lookAt(const Vec3& eye, const Vec3& center, const Vec3& up) {
 	res[8] = forward[0];
 	res[9] = forward[1];
 	res[10] = forward[2];
-	res[3] = -dot(right, eye[0]);
-	res[7] = -dot(newup, eye[1]);
-	res[11] = -dot(forward, eye[2]);
+	res[3] = -dot(right, eye);
+	res[7] = -dot(newup, eye);
+	res[11] = -dot(forward, eye);
 	return res;
 }

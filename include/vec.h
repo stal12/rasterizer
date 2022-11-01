@@ -153,6 +153,10 @@ inline Vec4 operator*(float f, const Vec4& v) {
     return Vec4{ v.x * f, v.y * f, v.z * f, v.w * f };
 }
 
+inline Vec4 operator/(const Vec4& v, float f) {
+    return Vec4{ v.x / f, v.y / f, v.z / f, v.w / f };
+}
+
 inline Vec4 operator+(const Vec4& a, const Vec4& b) {
     return Vec4{ a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w };
 }

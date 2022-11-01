@@ -5,4 +5,6 @@ TARGET_SOURCES(rasterizer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/output.h
     ${CMAKE_CURRENT_SOURCE_DIR}/vec.h
     ${CMAKE_CURRENT_SOURCE_DIR}/mat.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/framebuffer.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/pipeline.h
 )
